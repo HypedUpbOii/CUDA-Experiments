@@ -22,6 +22,7 @@ int main(int argc, char* argv[]){
     float* matrix1 = new float[M * K];
     float* matrix2 = new float[K * N];
     float* matrix3 = new float[M * N];
+    float* matrix_ref = new float[M * N];
 
     // random number generator
     std::random_device rd;
@@ -30,6 +31,16 @@ int main(int argc, char* argv[]){
 
     for(int i=0;i<M*K;i++) matrix1[i] = dist(gen);
     for(int i=0;i<K*N;i++) matrix2[i] = dist(gen);
+
+    for (int i = 0; i < M; ++i) {
+        for (int j = 0; j < N; ++j) {
+            float sum = 0.0f;
+            for (int k = 0; k < K; ++k) {
+                sum += matrix1[i*K + k] * matrix2[k*N + j];
+            }
+            matrix_ref[i * N + j] = sum;
+        }
+    }
 
     dim3 threadsPerBlock(32, 32);
     dim3 blocksPerGrid((M + threadsPerBlock.x - 1) / threadsPerBlock.x,
@@ -52,8 +63,18 @@ int main(int argc, char* argv[]){
     cudaFree(B);
     cudaFree(C);
 
+    float max_diff = 0.0f;
+    for (int i = 0; i < M; ++i) {
+        for (int j = 0; j < N; ++j) {
+            max_diff = std::max(max_diff, std::abs(matrix_ref[i * N + j] - matrix3[i * N + j]));
+        }
+    }
+
+    std::cout << "Maximum difference between elements: " << max_diff << std::endl;
+
     delete[] matrix1;
     delete[] matrix2;
     delete[] matrix3;
+    delete[] matrix_ref;
     return 0;
 }
