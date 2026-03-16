@@ -50,41 +50,49 @@ int main(int argc, char* argv[]) {
         weights2[i] = dist(gen);
     }
 
-    dim3 threadsPerBlock(32, 32);
-    dim3 blocksPerGrid((N + threadsPerBlock.x - 1) / threadsPerBlock.x,
-                       (B + threadsPerBlock.y - 1) / threadsPerBlock.y);
-
     float* I;
-    float* W1; // transposed
+    float* W1;
     float* res;
-    float* W2; // transposed
+    float* W2;
 
     cudaMalloc((void**)&I, sizeof(float) * B * N);
     cudaMalloc((void**)&W1, sizeof(float) * N * N);
     cudaMalloc((void**)&res, sizeof(float) * B * N);
     cudaMalloc((void**)&W2, sizeof(float) * N * N);
 
-    cudaMemcpy(I, inputs, sizeof(float) * B * N, cudaMemcpyHostToDevice);
     cudaMemcpy(W1, weights1, sizeof(float) * N * N, cudaMemcpyHostToDevice);
     cudaMemcpy(W2, weights2, sizeof(float) * N * N, cudaMemcpyHostToDevice);
 
     int chunk = B / NUM_STREAMS;
     cudaStream_t streams[NUM_STREAMS];
 
+    dim3 threadsPerBlock(32, 32);
+    dim3 blocksPerGrid((N + threadsPerBlock.x - 1) / threadsPerBlock.x,
+                       (chunk + threadsPerBlock.y - 1) / threadsPerBlock.y);
+
     for (int i = 0; i < NUM_STREAMS; ++i) {
         cudaStreamCreate(&streams[i]);
         float* I_s = I + (i * chunk * N);
+        cudaMemcpyAsync(I_s, inputs + (i * chunk * N), sizeof(float) * chunk * N, cudaMemcpyHostToDevice, streams[i]);
+        float* res_s = res + (i * chunk * N);
+        matmul<<<blocksPerGrid, threadsPerBlock, 0, streams[i]>>>(I_s, W1, res_s, chunk, N, N);
+        relu<<<blocksPerGrid, threadsPerBlock, 0, streams[i]>>>(res_s, chunk, N);
+        matmul<<<blocksPerGrid, threadsPerBlock, 0, streams[i]>>>(res_s, W2, I_s, chunk, N, N);
+        cudaMemcpyAsync(answer + (i * chunk * N), I_s, sizeof(float) * chunk * N, cudaMemcpyDeviceToHost, streams[i]);
     }
 
-    matmul<<<blocksPerGrid, threadsPerBlock>>>(I, W1, res, B, N, N);
-    relu<<<blocksPerGrid, threadsPerBlock>>>(res, B, N);
-    matmul<<<blocksPerGrid, threadsPerBlock>>>(res, W2, I, B, N, N);
+    for (int i = 0; i < NUM_STREAMS; ++i) {
+        cudaStreamSynchronize(streams[i]);
+    }
 
-    cudaMemcpy(answer, I, sizeof(float) * B * N, cudaMemcpyDeviceToHost);
     cudaFree(I);
     cudaFree(W1);
     cudaFree(W2);
     cudaFree(res);
+
+    for (int i = 0; i < NUM_STREAMS; ++i) {
+        cudaStreamDestroy(streams[i]);
+    }
 
     float* hidden = new float[B * N];
 
