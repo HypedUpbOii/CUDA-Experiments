@@ -10,7 +10,7 @@ __global__ void tiling_matmul(float* A, float* B, float* C, int M, int K, int N)
     __shared__ float tileB[TILEDIM][TILEDIM];
 
     int col = (blockDim.x * blockIdx.x) + threadIdx.x;
-    int row = (blockDim.y * blockIdx.y) + threadIdx.y;
+    int row = NELEM * TILEDIM * blockIdx.y;
 
     int rel_pos_x = threadIdx.x;
     int rel_pos_y = threadIdx.y;
@@ -23,7 +23,7 @@ __global__ void tiling_matmul(float* A, float* B, float* C, int M, int K, int N)
         int By = (i * TILEDIM) + rel_pos_y;
         for (int j = 0; j < NELEM; ++j) {
             if (Ay + (j * TILEDIM) < M && Ax < K) {
-                tileA[rel_pos_y + (j * TILEDIM)][rel_pos_x] = A[((Ay + (j * TILEDIM)) * K) + Ax];
+                tileA[rel_pos_y + (j * TILEDIM)][rel_pos_x] = A[((Ay + (j * TILEDIM) + rel_pos_y) * K) + Ax];
             } else {
                 tileA[rel_pos_y + (j * TILEDIM)][rel_pos_x] = 0.0f;
             }
@@ -45,8 +45,8 @@ __global__ void tiling_matmul(float* A, float* B, float* C, int M, int K, int N)
     }
 
     for (int i = 0; i < NELEM; ++i) {
-        if (row + (i * TILEDIM) < M && col < N) {
-            C[((row + (i * TILEDIM)) * N) + col] = sum[i];
+        if (row + (i * TILEDIM) + rel_pos_y < M && col < N) {
+            C[((row + (i * TILEDIM) + rel_pos_y) * N) + col] = sum[i];
         }
     }
 }
