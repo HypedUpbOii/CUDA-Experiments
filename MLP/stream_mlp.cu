@@ -2,6 +2,8 @@
 #include <random>
 #include <iostream>
 
+#define NUM_STREAMS 4
+
 __global__ void matmul(float* A, float* B, float* C, int M, int K, int N) {
     int x = threadIdx.x + (blockIdx.x * blockDim.x);
     int y = threadIdx.y + (blockIdx.y * blockDim.y);
@@ -53,9 +55,9 @@ int main(int argc, char* argv[]) {
                        (B + threadsPerBlock.y - 1) / threadsPerBlock.y);
 
     float* I;
-    float* W1;
+    float* W1; // transposed
     float* res;
-    float* W2;
+    float* W2; // transposed
 
     cudaMalloc((void**)&I, sizeof(float) * B * N);
     cudaMalloc((void**)&W1, sizeof(float) * N * N);
@@ -65,6 +67,15 @@ int main(int argc, char* argv[]) {
     cudaMemcpy(I, inputs, sizeof(float) * B * N, cudaMemcpyHostToDevice);
     cudaMemcpy(W1, weights1, sizeof(float) * N * N, cudaMemcpyHostToDevice);
     cudaMemcpy(W2, weights2, sizeof(float) * N * N, cudaMemcpyHostToDevice);
+
+    int chunk = B / NUM_STREAMS;
+    cudaStream_t streams[NUM_STREAMS];
+
+    for (int i = 0; i < NUM_STREAMS; ++i) {
+        cudaStreamCreate(&streams[i]);
+        float* I_s = I + (i * chunk * N);
+    }
+
     matmul<<<blocksPerGrid, threadsPerBlock>>>(I, W1, res, B, N, N);
     relu<<<blocksPerGrid, threadsPerBlock>>>(res, B, N);
     matmul<<<blocksPerGrid, threadsPerBlock>>>(res, W2, I, B, N, N);
