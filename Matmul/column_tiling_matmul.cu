@@ -45,7 +45,7 @@ __global__ void tiling_matmul(float* A, float* B, float* C, int M, int K, int N)
     }
 
     for (int i = 0; i < NELEM; ++i) {
-        if (row < M && col + (i * TILEDIM) < N) {
+        if (row + (i * TILEDIM) < M && col < N) {
             C[((row + (i * TILEDIM)) * N) + col] = sum[i];
         }
     }
